@@ -13,6 +13,12 @@ import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Scanner;
+
+
 
 
 
@@ -22,6 +28,7 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -32,6 +39,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+
 
 public class Training extends Activity {
 	private static final String TAG = "Training";
@@ -49,6 +57,7 @@ public class Training extends Activity {
 			"toward money serve govern voice power figure field beauty " +
 			"front final green develop minute behind wheel force common " +
 			"wonder shape brought bring perhaps weight "; 
+
 	
 	private SpannableString displaylist = new SpannableString("Press 'Start' to begin training");
 	private int list_idx = 0;
@@ -57,12 +66,20 @@ public class Training extends Activity {
 	private boolean motion_flag = false;
 	private boolean start_flag = false;
 	private String download = "";
+	private LinkedList<FloatNode>[] x_cord = (LinkedList<FloatNode>[]) new LinkedList[26];
+	private LinkedList<FloatNode>[] y_cord = (LinkedList<FloatNode>[]) new LinkedList[26];
 	
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 //        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         setContentView(R.layout.activity_training);
+        
+        for (int i = 0; i < 26; i++)
+        {
+        	x_cord[i] = new LinkedList<FloatNode>();
+        	y_cord[i] = new LinkedList<FloatNode>();
+        }
         
         Button next = (Button) findViewById(R.id.button1);
         next.setOnClickListener(new View.OnClickListener() {
@@ -82,10 +99,56 @@ public class Training extends Activity {
 
 				if (list_idx == (wordlist.length()-1))
 				{
+					start_flag = false;
 					// Update display text to "***Training Complete***"
 					displaylist = new SpannableString("***Training Complete***");
 					textView.setText(displaylist);
+					list_idx = 0;
+					disp_idx = 0;
+					
+					// Process the Data
+				    double x_avg[] = new double[26];
+				    double y_avg[] = new double[26];
+				    for (int i = 0; i < 26; i++)
+				    {
+				       x_avg[i] = 0;
+				       y_avg[i] = 0;
+				       for (int j = 0; j < x_cord[i].size(); j++)
+				       {
+				          x_avg[i] += x_cord[i].get(j).getItem();
+				          y_avg[i] += y_cord[i].get(j).getItem();
+				       }				       
 
+				       if (x_cord[i].size() > 0)
+				       {
+				          x_avg[i] /= x_cord[i].size();
+				          y_avg[i] /= y_cord[i].size();
+				       }
+				    }
+				    
+				    double distance_std[] = new double[26];
+				    for (int i = 0; i < 26; i++)
+				    {
+				    	for (int j = 0; j < x_cord[i].size(); j++)
+				    	{
+				    	   distance_std[i] += Math.pow(x_cord[i].get(j).getItem() - x_avg[i], 2);
+				    	   distance_std[i] += Math.pow(y_cord[i].get(j).getItem() - y_avg[i], 2);
+				    	}
+				    	
+				    	if (x_cord[i].size() > 1)
+				    	{
+				    	   distance_std[i] /= x_cord[i].size() - 1;
+				    	}
+				    	
+				    	distance_std[i] = Math.sqrt(distance_std[i]);
+				    }
+				    
+				    for (int i = 0; i < 26; i++)
+				    {
+        			   output += String.valueOf(x_avg[i]) + " " + String.valueOf(y_avg[i]) + " " + String.valueOf(distance_std[i]) + " ";
+				    }
+				    output += "\r\n"; 
+				    
 					// Print out the file and upload the file
 		    		try {		    			
 		    			// ##### Write a file to the disk #####
@@ -95,9 +158,9 @@ public class Training extends Activity {
 		    			 * This is done for security-reasons. 
 		    			 * We chose MODE_WORLD_READABLE, because
 		    			 *  we have nothing to hide in our file */    			    
-		    			    
-		    			FileOutputStream fOut = openFileOutput("output.txt", 
-		    								MODE_WORLD_READABLE);
+    
+		    			FileOutputStream fOut = openFileOutput("train_data.txt", 
+		    								Context.MODE_PRIVATE);
 		    			OutputStreamWriter osw = new OutputStreamWriter(fOut);
 
 		    			osw.write(output);    	
@@ -108,8 +171,8 @@ public class Training extends Activity {
 		    			osw.close();
 		    			
 		 				//** Send image and offload image processing task  to server by starting async task ** 
-		  				ServerTask task = new ServerTask();
-		  				task.execute("/data/data/com.example.keylesskeyboard/files/output.txt");
+//		  				ServerTask task = new ServerTask();
+//		  				task.execute("/data/data/com.example.keylesskeyboard/files/output.txt");
 		    		}
 		    	    catch (IOException ex) {
 		    	        Log.e(TAG, ex.toString());
@@ -174,7 +237,7 @@ public class Training extends Activity {
 			}
 		});
 
-        /*
+        
         Button delete = (Button) findViewById(R.id.button3);
         delete.setOnClickListener(new View.OnClickListener() {
 			@Override
@@ -184,8 +247,7 @@ public class Training extends Activity {
 				if (disp_idx > 0)
 				{
 					// delete previous entry
-					int last_idx = output.lastIndexOf(wordlist.charAt(list_idx), wordlist.length()-1);
-					output = output.substring(0, last_idx-1);
+					int last_idx = wordlist.charAt(list_idx) - 'a';
 					
 					disp_idx--;
         			UnderlineSpan[] toRemoveSpans = displaylist.getSpans(0, displaylist.length(), UnderlineSpan.class);
@@ -197,10 +259,16 @@ public class Training extends Activity {
 					displaylist.setSpan(new UnderlineSpan(), disp_idx, disp_idx+1, 0);
 					textView.setText(displaylist);
 					list_idx--;
+					
+					if (x_cord[last_idx].size() != 0)
+					{
+						x_cord[last_idx].remove(x_cord[last_idx].size()-1);
+						y_cord[last_idx].remove(y_cord[last_idx].size()-1);                    
+					}
 				}			   
 			}
 		});
-		*/
+		
     }
     
     public boolean onTouchEvent(MotionEvent event) {
@@ -213,8 +281,10 @@ public class Training extends Activity {
             		// finger touches the screen
             		// record the xy location
             		if (motion_flag == false)
-            		{            		
-            			output += String.valueOf(wordlist.charAt(list_idx)) + " " + String.valueOf(event.getX()) + " " + String.valueOf(event.getY()) + " \r\n";
+            		{
+            			int index = (int) (wordlist.charAt(list_idx) - 'a');
+                        x_cord[index].add(new FloatNode(event.getX()));
+                        y_cord[index].add(new FloatNode(event.getY()));
             			motion_flag = true;
             	
             			// move the cursor
@@ -256,197 +326,55 @@ public class Training extends Activity {
     }
     */
     
-	//*******************************************************************************
-	//Push processing task to server
-	//*******************************************************************************
-	
-	public class ServerTask  extends AsyncTask<String, Integer , Void>
-	{
-		public byte[] dataToServer;
-				
-		//Task state
-//		private final String SERVERURL = "http://10.0.2.2/training.php";
-//		private final String SERVERURL = "http://192.168.0.6/training.php";
-		private final String SERVERURL = "http://198.213.239.178/training.php";
-		private final int UPLOADING_STATE  = 0;
-		private final int SERVER_PROC_STATE  = 1;
-		
-		private ProgressDialog dialog;
-		
-		//upload photo to server
-		HttpURLConnection uploadPhoto(FileInputStream fileInputStream)
-		{
-			
-			final String serverFileName = "temp.txt";		
-			final String lineEnd = "\r\n";
-			final String twoHyphens = "--";
-			final String boundary = "*****";
-			
-			try
-			{
-				URL url = new URL(SERVERURL);
-				// Open a HTTP connection to the URL				
-				final HttpURLConnection conn = (HttpURLConnection)url.openConnection();
-				// Allow Inputs
-				conn.setDoInput(true);				
-				// Allow Outputs
-				conn.setDoOutput(true);				
-				// Don't use a cached copy.
-				conn.setUseCaches(false);
-				
-				// Use a post method.
-				conn.setRequestMethod("POST");
-				conn.setRequestProperty("Connection", "Keep-Alive");
-				conn.setRequestProperty("Content-Type", "multipart/form-data;boundary="+boundary);
-				
-				DataOutputStream dos = new DataOutputStream( conn.getOutputStream() );
-				
-				dos.writeBytes(twoHyphens + boundary + lineEnd);
-				dos.writeBytes("Content-Disposition: form-data; name=\"uploadedfile\";filename=\"" + serverFileName +"\"" + lineEnd);
-				dos.writeBytes(lineEnd);
-
-				// create a buffer of maximum size
-				int bytesAvailable = fileInputStream.available();
-				int maxBufferSize = 1024;
-				int bufferSize = Math.min(bytesAvailable, maxBufferSize);
-				byte[] buffer = new byte[bufferSize];
-				
-				// read file and write it into form...
-				int bytesRead = fileInputStream.read(buffer, 0, bufferSize);
-				
-				while (bytesRead > 0)
-				{
-					dos.write(buffer, 0, bufferSize);
-					bytesAvailable = fileInputStream.available();
-					bufferSize = Math.min(bytesAvailable, maxBufferSize);
-					bytesRead = fileInputStream.read(buffer, 0, bufferSize);
-				}
-				
-				// send multipart form data after file data...
-				dos.writeBytes(lineEnd);
-				dos.writeBytes(twoHyphens + boundary + twoHyphens + lineEnd);
-				publishProgress(SERVER_PROC_STATE);
-				// close streams
-				fileInputStream.close();
-				dos.flush();
-				
-				return conn;
-			}
-			catch (MalformedURLException ex){
-				Log.e(TAG, "error: " + ex.getMessage(), ex);
-				return null;
-			}
-			catch (IOException ioe){
-				Log.e(TAG, "error: " + ioe.getMessage(), ioe);
-				return null;
-			}
-		}
-		
-	    private void readStream(InputStream inputStream) {
-			// TODO Auto-generated method stub
-			
-		}
-
-		//get image result from server and display it in result view
-		void getResult(HttpURLConnection conn){
-			// retrieve the response from server
-			InputStream is;
-			StringBuilder s = new StringBuilder();
-			try {
-				is = conn.getInputStream();
-				
-				char[] buf = new char[2048];
-				Reader r = new InputStreamReader(is, "UTF-8");
-				while (true) {
-				   int n = r.read(buf);
-				   if (n < 0)
-				      break;
-				   s.append(buf, 0, n);
-				}
-			} catch (IOException e) {
-				Log.e(TAG,e.toString());
-				e.printStackTrace();
-			}
-			
-			download = new String(s);
-
-			try {
-				FileOutputStream fOut = openFileOutput ("train_data.txt", MODE_WORLD_READABLE);
-				OutputStreamWriter osw = new OutputStreamWriter(fOut);
-				osw.write(download);
-			
-				/* ensure that everything is 
-				 * really written out and close */
-				osw.flush();
-				osw.close();
-			}
-    	    catch (IOException ex) {
-    	        Log.e(TAG, ex.toString());
-    	    }
-		}
-		
-		//Main code for processing image algorithm on the server
-		
-		void processImage(String inputImageFilePath){			
-			publishProgress(UPLOADING_STATE);
-			File inputFile = new File(inputImageFilePath);
-			try {
-				
-				//create file stream for captured image file
-				FileInputStream fileInputStream  = new FileInputStream(inputFile);
-		    	
-				//upload photo
-		    	final HttpURLConnection  conn = uploadPhoto(fileInputStream);
-		    	
-		    	//get processed photo from server
-		    	if (conn != null){
-		    		getResult(conn);
-		    	}
-				fileInputStream.close();
-			}
-	        catch (FileNotFoundException ex){
-	        	Log.e(TAG, ex.toString());
-	        }
-	        catch (IOException ex){
-	        	Log.e(TAG, ex.toString());
-	        }
-		}
-		
-	    public ServerTask() {
-	        dialog = new ProgressDialog(mContext);
-	    }		
-		
-	    protected void onPreExecute() {
-	        this.dialog.setMessage("Photo captured");
-	        this.dialog.show();
-	    }
-		@Override
-		protected Void doInBackground(String... params) {			//background operation 
-			String uploadFilePath = params[0];
-			processImage(uploadFilePath);
-			return null;
-		}		
-		//progress update, display dialogs
-		@Override
-	     protected void onProgressUpdate(Integer... progress) {
-	    	 if(progress[0] == UPLOADING_STATE){
-	    		 dialog.setMessage("Uploading");
-	    		 dialog.show();
-	    	 }
-	    	 else if (progress[0] == SERVER_PROC_STATE){
-		           if (dialog.isShowing()) {
-		               dialog.dismiss();
-		           }	    	 
-	    		 dialog.setMessage("Processing");
-	    		 dialog.show();
-	    	 }	         
-	     }		
-	       @Override
-	       protected void onPostExecute(Void param) {
-	           if (dialog.isShowing()) {
-	               dialog.dismiss();
-	           }
-	       }
+    
+    public class FloatNode
+    {
+      private float item;
+      private FloatNode next;
+     
+      public FloatNode()
+      {
+        item = 0;
+        next = null;
+      }
+      public FloatNode(float newItem)
+      {
+        item = newItem;
+        next = null;
+      }
+      public FloatNode(float newItem, FloatNode nextNode)
+      {
+        item = newItem;
+        next = null;
+      }
+      public void setItem(float newItem)
+      {
+        item = newItem;
+      }
+      public float getItem()
+      {
+        return item;
+      }
+      public void setNext(FloatNode nextNode)
+      {
+        next = nextNode;
+      }
+      public FloatNode getNext()
+      {
+        return next;
+      }
+    }
+    
+	public void onResume() {
+		super.onResume();		
+		list_idx = 0;
+		disp_idx = 0;
+		output = "";
+		motion_flag = false;
+		start_flag = false;
+		download = "";
 	}
+    
+
 }
 
